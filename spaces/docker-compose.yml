@@ -1,10 +1,8 @@
 services:
-  # Existing main app services would be here...
-
   # Spaces - AI Project Generator
   spaces:
     build:
-      context: ./spaces
+      context: .
       dockerfile: Dockerfile
     container_name: spaces-app
     restart: unless-stopped
