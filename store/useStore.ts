@@ -45,6 +45,8 @@ interface StoreState {
   // Actions - Project
   setCurrentProject: (project: Project | null) => void;
   createProject: (name: string, template: string, files: FileNode[]) => void;
+  deleteProject: (projectId: string) => void;
+  renameProject: (projectId: string, newName: string) => void;
   
   // Actions - Files
   setFiles: (files: FileNode[]) => void;
@@ -1063,6 +1065,31 @@ export const useStore = create<StoreState>()(
           files,
           openFiles: [],
           activeFileId: null,
+        }));
+      },
+
+      deleteProject: (projectId) => {
+        set((state) => {
+          const newProjects = state.projects.filter(p => p.id !== projectId);
+          const isCurrentDeleted = state.currentProject?.id === projectId;
+          return {
+            projects: newProjects,
+            currentProject: isCurrentDeleted ? null : state.currentProject,
+            files: isCurrentDeleted ? [] : state.files,
+            openFiles: isCurrentDeleted ? [] : state.openFiles,
+            activeFileId: isCurrentDeleted ? null : state.activeFileId,
+          };
+        });
+      },
+
+      renameProject: (projectId, newName) => {
+        set((state) => ({
+          projects: state.projects.map(p => 
+            p.id === projectId ? { ...p, name: newName, updatedAt: Date.now() } : p
+          ),
+          currentProject: state.currentProject?.id === projectId 
+            ? { ...state.currentProject, name: newName, updatedAt: Date.now() }
+            : state.currentProject,
         }));
       },
 

@@ -66,7 +66,19 @@ type AIProviderKey = keyof typeof AI_PROVIDERS;
 
 // History Panel Component
 const HistoryPanel: React.FC = () => {
-  const { projects, currentProject, setCurrentProject, setFiles, theme } = useStore();
+  const { projects, currentProject, setCurrentProject, setFiles, deleteProject, renameProject, theme } = useStore();
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [renameMode, setRenameMode] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setMenuOpen(null);
+    if (menuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [menuOpen]);
   
   const bgCard = theme === 'dark' ? 'bg-slate-800' : 'bg-gray-50';
   const bgCardHover = theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100';
@@ -108,6 +120,51 @@ const HistoryPanel: React.FC = () => {
     setFiles(project.files);
   };
 
+  const handleRename = (projectId: string, currentName: string) => {
+    setRenameMode(projectId);
+    setRenameValue(currentName);
+    setMenuOpen(null);
+  };
+
+  const handleRenameSubmit = (projectId: string) => {
+    if (renameValue.trim()) {
+      renameProject(projectId, renameValue.trim());
+    }
+    setRenameMode(null);
+    setRenameValue('');
+  };
+
+  const handleDelete = (projectId: string) => {
+    if (confirm('Are you sure you want to delete this project?')) {
+      deleteProject(projectId);
+    }
+    setMenuOpen(null);
+  };
+
+  const handleDownload = (project: typeof projects[0]) => {
+    // Create a JSON file with project data
+    const dataStr = JSON.stringify(project, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    const exportName = `${project.name.replace(/\s+/g, '-').toLowerCase()}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportName);
+    linkElement.click();
+    setMenuOpen(null);
+  };
+
+  const handleShare = (project: typeof projects[0]) => {
+    // Copy project info to clipboard
+    const shareText = `Check out my project: ${project.name} (${project.template}) - ${project.files.length} files`;
+    navigator.clipboard.writeText(shareText);
+    alert('Project info copied to clipboard!');
+    setMenuOpen(null);
+  };
+
+  const menuBg = theme === 'dark' ? 'bg-slate-700' : 'bg-white';
+  const menuHover = theme === 'dark' ? 'hover:bg-slate-600' : 'hover:bg-gray-100';
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -127,28 +184,46 @@ const HistoryPanel: React.FC = () => {
         ) : (
           <div className="space-y-2">
             {[...projects].reverse().map((project) => (
-              <button
+              <div
                 key={project.id}
-                onClick={() => handleOpenProject(project)}
-                className={`w-full text-left p-3 rounded-lg transition-all duration-200 ${bgCard} ${bgCardHover} border ${borderColor} ${
+                className={`relative w-full text-left p-3 rounded-lg transition-all duration-200 ${bgCard} border ${borderColor} ${
                   currentProject?.id === project.id 
                     ? 'ring-2 ring-indigo-500 border-indigo-500' 
                     : ''
                 }`}
               >
-                <div className="flex items-start gap-3">
+                <div 
+                  className={`flex items-start gap-3 cursor-pointer ${bgCardHover} rounded -m-3 p-3`}
+                  onClick={() => handleOpenProject(project)}
+                >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${
                     theme === 'dark' ? 'bg-slate-700' : 'bg-gray-200'
                   }`}>
                     {getTemplateIcon(project.template)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className={`font-medium truncate ${textPrimary}`}>{project.name}</h4>
-                      {currentProject?.id === project.id && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">Active</span>
-                      )}
-                    </div>
+                    {renameMode === project.id ? (
+                      <input
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => handleRenameSubmit(project.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameSubmit(project.id);
+                          if (e.key === 'Escape') { setRenameMode(null); setRenameValue(''); }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className={`w-full px-2 py-1 text-sm rounded ${theme === 'dark' ? 'bg-slate-600 text-white' : 'bg-white text-gray-900 border'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h4 className={`font-medium truncate ${textPrimary}`}>{project.name}</h4>
+                        {currentProject?.id === project.id && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400">Active</span>
+                        )}
+                      </div>
+                    )}
                     <p className={`text-xs ${textMuted} truncate`}>{project.template}</p>
                     <div className={`flex items-center gap-2 mt-1 text-xs ${textMuted}`}>
                       <span>{project.files.length} files</span>
@@ -156,8 +231,77 @@ const HistoryPanel: React.FC = () => {
                       <span>{formatDate(project.updatedAt)}</span>
                     </div>
                   </div>
+                  
+                  {/* Hamburger Menu Button */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpen(menuOpen === project.id ? null : project.id);
+                      }}
+                      className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`}
+                      title="More options"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    {menuOpen === project.id && (
+                      <div className={`absolute right-0 top-8 w-36 ${menuBg} rounded-lg shadow-lg border ${borderColor} z-50 overflow-hidden`}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleOpenProject(project); setMenuOpen(null); }}
+                          className={`w-full px-3 py-2 text-left text-sm ${textPrimary} ${menuHover} flex items-center gap-2`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          Open
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRename(project.id, project.name); }}
+                          className={`w-full px-3 py-2 text-left text-sm ${textPrimary} ${menuHover} flex items-center gap-2`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Rename
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownload(project); }}
+                          className={`w-full px-3 py-2 text-left text-sm ${textPrimary} ${menuHover} flex items-center gap-2`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleShare(project); }}
+                          className={`w-full px-3 py-2 text-left text-sm ${textPrimary} ${menuHover} flex items-center gap-2`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                          </svg>
+                          Share
+                        </button>
+                        <div className={`border-t ${borderColor}`} />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(project.id); }}
+                          className={`w-full px-3 py-2 text-left text-sm text-red-500 ${menuHover} flex items-center gap-2`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
