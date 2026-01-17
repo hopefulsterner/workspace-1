@@ -2,8 +2,6 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from './store/useStore';
 import { FileExplorer } from './components/FileExplorer';
 import { CodeEditor } from './components/CodeEditor';
-import { Terminal } from './components/Terminal';
-import { RealTerminal } from './components/RealTerminal';
 import { AIChat } from './components/AIChat';
 import { AgenticAIChat } from './components/AgenticAIChat';
 import { TemplateGallery } from './components/TemplateGallery';
@@ -542,10 +540,6 @@ const SettingsPanel: React.FC<{ theme: string; setTheme: (t: any) => void }> = (
             <kbd className={`px-2 py-0.5 ${kbdBg} rounded`}>Ctrl+S</kbd>
           </div>
           <div className={`flex justify-between p-2 ${textMuted}`}>
-            <span>Toggle Terminal</span>
-            <kbd className={`px-2 py-0.5 ${kbdBg} rounded`}>Ctrl+`</kbd>
-          </div>
-          <div className={`flex justify-between p-2 ${textMuted}`}>
             <span>AI Assistant</span>
             <kbd className={`px-2 py-0.5 ${kbdBg} rounded`}>Ctrl+Shift+A</kbd>
           </div>
@@ -596,8 +590,6 @@ const App: React.FC = () => {
     openFile,
     theme,
     setTheme,
-    terminalOpen,
-    toggleTerminal,
     currentProject,
     addMessage,
   } = useStore();
@@ -976,21 +968,6 @@ const App: React.FC = () => {
               Preview Only
             </div>
           </button>
-          
-          <div className={`w-8 h-px ${theme === 'dark' ? 'bg-slate-700' : 'bg-gray-300'} my-1`} />
-          
-          {/* Bottom icons */}
-          <button
-            onClick={toggleTerminal}
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative
-              ${terminalOpen ? iconBarBtnActive : iconBarBtnInactive}`}
-            title="Terminal (Ctrl+`)"
-          >
-            <span className="text-lg">💻</span>
-            <div className={`absolute left-full ml-2 px-2 py-1 ${tooltipClasses} text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg`}>
-              Terminal (Ctrl+`)
-            </div>
-          </button>
         </div>
         
         {/* Left Panel Content */}
@@ -1063,26 +1040,19 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Editor + Terminal + Preview */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className={`${terminalOpen ? 'h-2/3' : 'h-full'} flex transition-all duration-300`}>
-            {/* Code Editor */}
-            {(viewMode === 'code' || viewMode === 'split') && (
-              <div className={viewMode === 'split' ? 'w-1/2' : 'w-full'}>
-                <CodeEditor />
-              </div>
-            )}
-            
-            {/* Inline Preview for Split/Preview modes */}
-            {(viewMode === 'split' || viewMode === 'preview') && (
-              <div className={`${viewMode === 'split' ? 'w-1/2 border-l' : 'w-full'} ${theme === 'dark' ? 'border-slate-700' : 'border-gray-200'}`}>
-                <LivePreview />
-              </div>
-            )}
-          </div>
-          {terminalOpen && (
-            <div className={`h-1/3 border-t ${theme === 'dark' ? 'border-slate-700' : 'border-gray-200'}`}>
-              <RealTerminal />
+        {/* Editor + Preview */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Code Editor */}
+          {(viewMode === 'code' || viewMode === 'split') && (
+            <div className={viewMode === 'split' ? 'w-1/2' : 'w-full'}>
+              <CodeEditor />
+            </div>
+          )}
+          
+          {/* Inline Preview for Split/Preview modes */}
+          {(viewMode === 'split' || viewMode === 'preview') && (
+            <div className={`${viewMode === 'split' ? 'w-1/2 border-l' : 'w-full'} ${theme === 'dark' ? 'border-slate-700' : 'border-gray-200'}`}>
+              <LivePreview />
             </div>
           )}
         </div>
