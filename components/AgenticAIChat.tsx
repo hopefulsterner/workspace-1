@@ -29,7 +29,12 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
     activeFileId,
     theme,
     createFile,
+    createFolder,
     files,
+    openFile,
+    currentProject,
+    createProject,
+    setCurrentProject,
   } = useStore();
   
   const [input, setInput] = useState('');
@@ -37,6 +42,7 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
+  const [createdFiles, setCreatedFiles] = useState<string[]>([]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -88,7 +94,22 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
       if (operation.type === 'create' || operation.type === 'edit') {
         const pathParts = operation.path.split('/');
         const fileName = pathParts.pop() || operation.path;
-        const parentPath = pathParts.join('/') || '/';
+        const parentPath = pathParts.length > 0 ? pathParts.join('/') : '';
+        
+        // Create parent folders if they don't exist
+        if (parentPath) {
+          const folderParts = parentPath.split('/');
+          let currentPath = '';
+          for (const folder of folderParts) {
+            const folderPath = currentPath ? `${currentPath}/${folder}` : folder;
+            // Check if folder exists in files
+            const folderExists = files.some(f => f.path === folderPath && f.type === 'folder');
+            if (!folderExists) {
+              createFolder(currentPath, folder);
+            }
+            currentPath = folderPath;
+          }
+        }
         
         // Determine language from extension
         const ext = fileName.split('.').pop() || '';
@@ -102,13 +123,37 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
           'css': 'css',
           'json': 'json',
           'md': 'markdown',
+          'yml': 'yaml',
+          'yaml': 'yaml',
+          'sh': 'bash',
+          'env': 'plaintext',
         };
+        const language = languageMap[ext] || 'plaintext';
         
+        // Create the file
         createFile(parentPath, fileName, operation.content);
+        
+        // Track created files for display
+        setCreatedFiles(prev => [...prev, operation.path]);
+        
+        // Auto-open the file in editor
+        const fileId = crypto.randomUUID();
+        openFile({
+          id: fileId,
+          name: fileName,
+          path: operation.path,
+          content: operation.content || '',
+          language,
+          isDirty: false,
+        });
+        
         console.log(`[AI] Created/Updated file: ${operation.path}`);
+      } else if (operation.type === 'delete') {
+        // Handle delete operation - for now just log
+        console.log(`[AI] Delete requested for: ${operation.path}`);
       }
     }
-  }, [onFileOperation, createFile]);
+  }, [onFileOperation, createFile, createFolder, openFile, files]);
 
   // Handle terminal command from AI
   const handleTerminalCommand = useCallback((command: string) => {
@@ -274,6 +319,11 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
           handleSpeak(result.response);
         }
       }
+      
+      // Save project to history if files were created
+      if (createdFiles.length > 0) {
+        saveProjectToHistory(input);
+      }
     } catch (error) {
       console.error('AI error:', error);
       setStreamingContent('');
@@ -288,8 +338,24 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
     } finally {
       setAiLoading(false);
       setIsStreaming(false);
+      setCreatedFiles([]); // Reset created files tracker
     }
   };
+  
+  // Save current project to history
+  const saveProjectToHistory = useCallback((prompt: string) => {
+    // Get current files from store
+    const currentFiles = useStore.getState().files;
+    if (currentFiles.length === 0) return;
+    
+    // Generate project name from prompt
+    const projectName = prompt.slice(0, 50).trim() || 'AI Generated Project';
+    
+    // Create project with current files
+    createProject(projectName, 'ai-generated', currentFiles);
+    
+    console.log(`[AI] Project saved to history: ${projectName}`);
+  }, [createProject]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -316,13 +382,13 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        code({ node, className, children, ...props }) {
+        code({ className, children }) {
           const match = /language-(\w+)/.exec(className || '');
           const isInline = !match;
           
           if (isInline) {
             return (
-              <code className={`${theme === 'dark' ? 'bg-slate-600' : 'bg-gray-200'} px-1 py-0.5 rounded text-sm`} {...props}>
+              <code className={`${theme === 'dark' ? 'bg-slate-600' : 'bg-gray-200'} px-1 py-0.5 rounded text-sm`}>
                 {children}
               </code>
             );
@@ -340,7 +406,7 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
                 </button>
               </div>
               <pre className="p-3 overflow-x-auto text-sm">
-                <code className={className} {...props}>
+                <code className={className}>
                   {children}
                 </code>
               </pre>
@@ -496,6 +562,28 @@ export const AgenticAIChat: React.FC<AgenticAIChatProps> = ({
                     {renderContent(streamingContent)}
                     <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
                   </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Created files indicator */}
+            {createdFiles.length > 0 && (
+              <div className={`mx-4 p-3 rounded-xl ${theme === 'dark' ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-emerald-500">📁</span>
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                    Files Created ({createdFiles.length})
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {createdFiles.map((file, idx) => (
+                    <span
+                      key={idx}
+                      className={`text-xs px-2 py-1 rounded-md ${theme === 'dark' ? 'bg-slate-700 text-emerald-300' : 'bg-white text-emerald-700 border border-emerald-200'}`}
+                    >
+                      {file}
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
