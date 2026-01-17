@@ -3,7 +3,9 @@ import { useStore } from './store/useStore';
 import { FileExplorer } from './components/FileExplorer';
 import { CodeEditor } from './components/CodeEditor';
 import { Terminal } from './components/Terminal';
+import { RealTerminal } from './components/RealTerminal';
 import { AIChat } from './components/AIChat';
+import { AgenticAIChat } from './components/AgenticAIChat';
 import { TemplateGallery } from './components/TemplateGallery';
 import { LivePreview } from './components/LivePreview';
 import { DeployPanel } from './components/DeployPanel';
@@ -1080,7 +1082,7 @@ const App: React.FC = () => {
           </div>
           {terminalOpen && (
             <div className={`h-1/3 border-t ${theme === 'dark' ? 'border-slate-700' : 'border-gray-200'}`}>
-              <Terminal />
+              <RealTerminal />
             </div>
           )}
         </div>
@@ -1219,7 +1221,7 @@ const App: React.FC = () => {
             
             {/* Panel Content */}
             <div className="flex-1 overflow-hidden">
-              {rightTab === 'ai' && <AIChat voiceEnabled={voiceEnabled} />}
+              {rightTab === 'ai' && <AgenticAIChat voiceEnabled={voiceEnabled} />}
               {rightTab === 'deploy' && <DeployPanel />}
               {rightTab === 'settings' && <SettingsPanel theme={theme} setTheme={setTheme} />}
             </div>
