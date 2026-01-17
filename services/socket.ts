@@ -10,11 +10,14 @@ class SocketService {
   
   // Connection URL - use backend API URL
   private getSocketUrl(): string {
-    // In production, use the same domain (wss://maula.dev)
-    // In development, use localhost
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://maula.dev/api';
-    // Remove /api suffix for socket connection
-    return apiUrl.replace('/api', '');
+    // In production, connect to the same origin
+    // In development, use localhost:4000
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      // Production: use same origin (https://maula.dev)
+      return `${window.location.protocol}//${window.location.host}`;
+    }
+    // Development
+    return 'http://localhost:4000';
   }
 
   // Connect to Socket.IO server

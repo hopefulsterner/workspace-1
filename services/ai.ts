@@ -40,8 +40,10 @@ const PROVIDER_CONFIGS: Record<AIProvider, { baseUrl: string; models: string[] }
   },
 };
 
-// Backend API URL
-const API_URL = import.meta.env.VITE_API_URL || 'https://maula.dev/api';
+// Backend API URL - use same origin in production
+const API_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? `${window.location.origin}/api`
+  : 'http://localhost:4000/api';
 
 // Internal API key - users don't need to configure this
 // In production, this should be handled by a backend proxy

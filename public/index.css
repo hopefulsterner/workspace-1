@@ -1,0 +1,42 @@
+/* AI Digital Friend Zone - Styles */
+/* Using Tailwind CDN for now */
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Animation for loading dots */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-bounce-delayed-1 {
+  animation: bounce 0.6s infinite;
+  animation-delay: 0.1s;
+}
+
+.animate-bounce-delayed-2 {
+  animation: bounce 0.6s infinite;
+  animation-delay: 0.2s;
+}
+
+.animate-bounce-delayed-3 {
+  animation: bounce 0.6s infinite;
+  animation-delay: 0.3s;
+}
