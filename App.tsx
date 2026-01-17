@@ -619,38 +619,37 @@ const App: React.FC = () => {
     }
   }, [voiceEnabled]);
   
-  // Screenshot handler - captures the preview area
+  // Screenshot handler - uses browser's native screen capture API
   const handleScreenshot = useCallback(async () => {
     setIsCapturing(true);
     try {
-      // Use html2canvas-like approach or capture visible area
-      const previewElement = document.querySelector('[data-preview-container]') as HTMLElement;
-      if (previewElement) {
-        // Try using native browser screenshot API if available
-        const canvas = document.createElement('canvas');
-        const rect = previewElement.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        
-        // For iframe content, we'll use a different approach
-        const iframe = previewElement.querySelector('iframe');
-        if (iframe) {
-          try {
-            // Capture using canvas drawing
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = theme === 'dark' ? '#1e293b' : '#ffffff';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              ctx.fillStyle = theme === 'dark' ? '#ffffff' : '#000000';
-              ctx.font = '16px sans-serif';
-              ctx.fillText('Preview Screenshot Captured', 20, 30);
-              ctx.fillText(`Project: ${currentProject?.name || 'Untitled'}`, 20, 60);
-              ctx.fillText(`Time: ${new Date().toLocaleString()}`, 20, 90);
-            }
-          } catch (e) {
-            console.log('Cross-origin iframe, using fallback');
-          }
-        }
+      // Use the browser's native screen capture API
+      const mediaStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: 'window',
+        },
+        audio: false,
+      });
+      
+      // Get the video track
+      const track = mediaStream.getVideoTracks()[0];
+      
+      // Create an ImageCapture object
+      const imageCapture = new (window as any).ImageCapture(track);
+      
+      // Grab a frame
+      const bitmap = await imageCapture.grabFrame();
+      
+      // Stop the stream immediately after capture
+      track.stop();
+      
+      // Draw to canvas and download
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0);
         
         // Convert to blob and download
         canvas.toBlob((blob) => {
@@ -658,29 +657,31 @@ const App: React.FC = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `screenshot-${Date.now()}.png`;
+            a.download = `screenshot-${currentProject?.name || 'project'}-${Date.now()}.png`;
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            
+            // Add to chat as context
+            addMessage({
+              id: crypto.randomUUID(),
+              role: 'user',
+              content: '📸 Screenshot captured and saved!',
+              timestamp: Date.now(),
+            });
           }
         }, 'image/png');
-        
-        // Also add to chat as context
-        addMessage({
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: '📸 Screenshot captured and saved',
-          timestamp: Date.now(),
-        });
-      } else {
-        alert('No preview area found to capture');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Screenshot error:', error);
-      alert('Failed to capture screenshot');
+      if (error.name !== 'AbortError') {
+        alert('Failed to capture screenshot. Please allow screen sharing when prompted.');
+      }
     } finally {
       setIsCapturing(false);
     }
-  }, [theme, currentProject, addMessage]);
+  }, [currentProject, addMessage]);
   
   // Camera handler
   const handleCameraToggle = useCallback(async () => {
@@ -692,15 +693,25 @@ const App: React.FC = () => {
     } else {
       // Start camera
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          } 
+        });
         setCameraStream(stream);
         setCameraActive(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error) {
+        // Video will be connected in useEffect when modal opens
+      } catch (error: any) {
         console.error('Camera error:', error);
-        alert('Failed to access camera. Please check permissions.');
+        if (error.name === 'NotAllowedError') {
+          alert('Camera access denied. Please allow camera permissions in your browser settings.');
+        } else if (error.name === 'NotFoundError') {
+          alert('No camera found on this device.');
+        } else {
+          alert('Failed to access camera. Please check permissions.');
+        }
       }
     }
   }, [cameraActive, cameraStream]);
@@ -736,6 +747,14 @@ const App: React.FC = () => {
       }
     }
   }, [addMessage]);
+  
+  // Connect camera stream to video element when stream or cameraActive changes
+  useEffect(() => {
+    if (cameraActive && cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(console.error);
+    }
+  }, [cameraActive, cameraStream]);
   
   // Cleanup camera on unmount
   useEffect(() => {
@@ -1162,7 +1181,6 @@ const App: React.FC = () => {
       </aside>
       
       {/* Hidden elements for camera capture */}
-      <video ref={videoRef} autoPlay playsInline className="hidden" />
       <canvas ref={canvasRef} className="hidden" />
       
       {/* Camera Preview Modal */}

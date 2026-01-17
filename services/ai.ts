@@ -74,7 +74,9 @@ async function sendViaBackend(
   temperature: number
 ): Promise<AIResponse | null> {
   try {
-    // API_URL already includes /api, so just add /ai/chat
+    console.log('[AI Service] Calling backend API:', API_URL);
+    
+    // Always use openai provider for backend since it has API keys configured
     const response = await fetch(`${API_URL}/ai/chat`, {
       method: 'POST',
       headers: {
@@ -82,22 +84,30 @@ async function sendViaBackend(
       },
       body: JSON.stringify({
         messages: messages.map(m => ({
-          role: m.role,
+          role: m.role === 'assistant' || m.role === 'model' ? 'assistant' : 'user',
           content: m.content,
         })),
-        provider,
-        model,
+        provider: 'openai', // Force openai since server has the key
+        model: 'gpt-4o-mini',
         temperature,
       }),
     });
     
+    console.log('[AI Service] Backend response status:', response.status);
+    
     if (response.ok) {
       const data = await response.json();
-      return { content: data.response };
+      console.log('[AI Service] Backend response:', data);
+      if (data.response) {
+        return { content: data.response };
+      }
+    } else {
+      const errorText = await response.text();
+      console.error('[AI Service] Backend error:', errorText);
     }
     return null;
   } catch (error) {
-    console.log('Backend API not available, using direct API calls');
+    console.error('[AI Service] Backend API not available:', error);
     return null;
   }
 }
