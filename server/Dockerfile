@@ -1,8 +1,8 @@
 # Backend Dockerfile
 FROM node:20-alpine AS base
 
-# Install dependencies for node-pty
-RUN apk add --no-cache python3 make g++ bash
+# Install dependencies for node-pty and OpenSSL
+RUN apk add --no-cache python3 make g++ bash openssl openssl-dev
 
 WORKDIR /app
 
@@ -10,8 +10,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including devDependencies for build)
+RUN npm ci
 
 # Generate Prisma Client
 RUN npx prisma generate
@@ -19,13 +19,13 @@ RUN npx prisma generate
 # Copy source
 COPY . .
 
-# Build
+# Build TypeScript
 RUN npm run build
 
 # Production stage
 FROM node:20-alpine AS production
 
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash openssl
 
 WORKDIR /app
 
