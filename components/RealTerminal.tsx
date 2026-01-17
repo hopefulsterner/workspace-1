@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -14,15 +14,19 @@ export const RealTerminal: React.FC<RealTerminalProps> = ({ className = '' }) =>
   const xtermRef = useRef<XTerminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalIdRef = useRef<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const isConnectingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   
   const { theme } = useStore();
 
-  // Initialize terminal display
-  const initializeXterm = useCallback(() => {
-    if (!terminalRef.current || xtermRef.current) return;
+  // Initialize terminal and connect - only once
+  useEffect(() => {
+    // Prevent double initialization
+    if (hasInitializedRef.current) return;
+    if (!terminalRef.current) return;
+    
+    hasInitializedRef.current = true;
 
     const isDark = theme === 'dark';
     
@@ -73,170 +77,122 @@ export const RealTerminal: React.FC<RealTerminalProps> = ({ className = '' }) =>
     terminal.writeln('\x1b[1;36m╚══════════════════════════════════════════╝\x1b[0m');
     terminal.writeln('');
 
-    return terminal;
-  }, [theme]);
-
-  // Connect to backend terminal
-  const connectToBackend = useCallback(async () => {
-    const terminal = xtermRef.current;
-    if (!terminal || isConnecting) return;
-
-    setIsConnecting(true);
-    setError(null);
-    terminal.writeln('\x1b[33m⏳ Connecting to server...\x1b[0m');
-
-    try {
-      // Connect to socket server
-      await socketService.connect();
-      terminal.writeln('\x1b[32m✓ Socket connected\x1b[0m');
-
-      // Create terminal session
-      const terminalId = await socketService.createTerminal({
-        cols: terminal.cols,
-        rows: terminal.rows,
-      });
+    // Connect function
+    const connectToBackend = async () => {
+      if (isConnectingRef.current || terminalIdRef.current) return;
       
-      terminalIdRef.current = terminalId;
-      terminal.writeln(`\x1b[32m✓ Terminal session created\x1b[0m`);
-      terminal.writeln('');
-      
-      setIsConnected(true);
-      setIsConnecting(false);
+      isConnectingRef.current = true;
+      setConnectionStatus('connecting');
+      terminal.writeln('\x1b[33m⏳ Connecting to server...\x1b[0m');
 
-      // Set up output handler
-      socketService.onTerminalOutput((data) => {
-        if (data.terminalId === terminalIdRef.current) {
-          terminal.write(data.data);
-        }
-      });
+      try {
+        await socketService.connect();
+        terminal.writeln('\x1b[32m✓ Socket connected\x1b[0m');
 
-      // Set up exit handler
-      socketService.onTerminalExit((data) => {
-        if (data.terminalId === terminalIdRef.current) {
-          terminal.writeln(`\x1b[33m\r\n[Process exited with code ${data.exitCode}]\x1b[0m`);
-          setIsConnected(false);
-          terminalIdRef.current = null;
-        }
-      });
-
-      // Handle user input
-      terminal.onData((data) => {
-        if (terminalIdRef.current && socketService.isConnected()) {
-          socketService.sendTerminalInput(terminalIdRef.current, data);
-        }
-      });
-
-    } catch (err: any) {
-      const errorMsg = err.message || 'Failed to connect';
-      terminal.writeln(`\x1b[31m✗ Connection failed: ${errorMsg}\x1b[0m`);
-      terminal.writeln('\x1b[90mType "connect" to retry\x1b[0m');
-      setError(errorMsg);
-      setIsConnecting(false);
-      setIsConnected(false);
-      
-      // Set up fallback input handler for retry
-      setupFallbackHandler(terminal);
-    }
-  }, [isConnecting]);
-
-  // Fallback handler for when not connected
-  const setupFallbackHandler = useCallback((terminal: XTerminal) => {
-    let currentLine = '';
-    
-    const dataHandler = (data: string) => {
-      // Remove this handler once connected
-      if (isConnected && terminalIdRef.current) {
-        return;
-      }
-
-      const code = data.charCodeAt(0);
-
-      if (code === 13) { // Enter
-        terminal.write('\r\n');
-        const cmd = currentLine.trim().toLowerCase();
+        const termId = await socketService.createTerminal({
+          cols: terminal.cols,
+          rows: terminal.rows,
+        });
         
-        if (cmd === 'connect' || cmd === 'retry') {
-          currentLine = '';
-          connectToBackend();
-        } else if (cmd === 'help') {
-          terminal.writeln('\x1b[1;33mAvailable commands:\x1b[0m');
-          terminal.writeln('  \x1b[36mconnect\x1b[0m - Connect to server terminal');
-          terminal.writeln('  \x1b[36mretry\x1b[0m   - Retry connection');
-          terminal.writeln('  \x1b[36mhelp\x1b[0m    - Show this help');
-          terminal.write('\x1b[1;32m❯\x1b[0m ');
-          currentLine = '';
-        } else if (cmd) {
-          terminal.writeln(`\x1b[31mNot connected. Type "connect" to connect to server.\x1b[0m`);
-          terminal.write('\x1b[1;32m❯\x1b[0m ');
-          currentLine = '';
-        } else {
-          terminal.write('\x1b[1;32m❯\x1b[0m ');
-        }
-      } else if (code === 127) { // Backspace
-        if (currentLine.length > 0) {
-          currentLine = currentLine.slice(0, -1);
-          terminal.write('\b \b');
-        }
-      } else if (code >= 32) { // Printable characters
-        currentLine += data;
-        terminal.write(data);
+        terminalIdRef.current = termId;
+        terminal.writeln('\x1b[32m✓ Terminal session created\x1b[0m');
+        terminal.writeln('');
+        
+        setConnectionStatus('connected');
+        isConnectingRef.current = false;
+
+        // Set up output handler
+        socketService.onTerminalOutput((data) => {
+          if (data.terminalId === terminalIdRef.current && xtermRef.current) {
+            xtermRef.current.write(data.data);
+          }
+        });
+
+        // Set up exit handler
+        socketService.onTerminalExit((data) => {
+          if (data.terminalId === terminalIdRef.current) {
+            terminal.writeln(`\x1b[33m\r\n[Process exited with code ${data.exitCode}]\x1b[0m`);
+            setConnectionStatus('disconnected');
+            terminalIdRef.current = null;
+          }
+        });
+
+        // Handle user input
+        terminal.onData((data) => {
+          if (terminalIdRef.current && socketService.isConnected()) {
+            socketService.sendTerminalInput(terminalIdRef.current, data);
+          }
+        });
+
+      } catch (err: any) {
+        const errorMsg = err.message || 'Failed to connect';
+        terminal.writeln(`\x1b[31m✗ Connection failed: ${errorMsg}\x1b[0m`);
+        terminal.writeln('\x1b[90mType "connect" to retry\x1b[0m');
+        setConnectionStatus('disconnected');
+        isConnectingRef.current = false;
+        
+        // Fallback input handler
+        let currentLine = '';
+        terminal.onData((data) => {
+          if (terminalIdRef.current) return;
+          
+          const code = data.charCodeAt(0);
+          if (code === 13) {
+            terminal.write('\r\n');
+            const cmd = currentLine.trim().toLowerCase();
+            if (cmd === 'connect' || cmd === 'retry') {
+              currentLine = '';
+              connectToBackend();
+            } else {
+              terminal.writeln('\x1b[90mType "connect" to retry\x1b[0m');
+              terminal.write('\x1b[1;32m❯\x1b[0m ');
+              currentLine = '';
+            }
+          } else if (code === 127 && currentLine.length > 0) {
+            currentLine = currentLine.slice(0, -1);
+            terminal.write('\b \b');
+          } else if (code >= 32) {
+            currentLine += data;
+            terminal.write(data);
+          }
+        });
+        terminal.write('\x1b[1;32m❯\x1b[0m ');
       }
     };
 
-    terminal.onData(dataHandler);
-    terminal.write('\x1b[1;32m❯\x1b[0m ');
-  }, [isConnected, connectToBackend]);
-
-  // Initialize on mount
-  useEffect(() => {
-    const terminal = initializeXterm();
-    if (terminal) {
-      // Auto-connect to backend
-      setTimeout(() => connectToBackend(), 500);
-    }
+    // Auto-connect after delay
+    const connectTimer = setTimeout(connectToBackend, 500);
 
     // Handle resize
     const handleResize = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        // Notify server of resize
-        if (terminalIdRef.current && socketService.isConnected()) {
-          socketService.resizeTerminal(
-            terminalIdRef.current,
-            xtermRef.current.cols,
-            xtermRef.current.rows
-          );
-        }
+      fitAddon.fit();
+      if (terminalIdRef.current && socketService.isConnected()) {
+        socketService.resizeTerminal(terminalIdRef.current, terminal.cols, terminal.rows);
       }
     };
 
     window.addEventListener('resize', handleResize);
-    
-    // Create resize observer for container
-    const resizeObserver = new ResizeObserver(() => {
-      handleResize();
-    });
-    
+    const resizeObserver = new ResizeObserver(handleResize);
     if (terminalRef.current) {
       resizeObserver.observe(terminalRef.current);
     }
 
     return () => {
+      clearTimeout(connectTimer);
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
       
-      // Kill terminal session
       if (terminalIdRef.current) {
         socketService.killTerminal(terminalIdRef.current);
+        terminalIdRef.current = null;
       }
       
-      // Dispose xterm
-      if (xtermRef.current) {
-        xtermRef.current.dispose();
-        xtermRef.current = null;
-      }
+      terminal.dispose();
+      xtermRef.current = null;
+      hasInitializedRef.current = false;
+      isConnectingRef.current = false;
     };
-  }, [initializeXterm, connectToBackend]);
+  }, []); // Empty deps - only run once
 
   // Update theme
   useEffect(() => {
@@ -263,24 +219,14 @@ export const RealTerminal: React.FC<RealTerminalProps> = ({ className = '' }) =>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Terminal</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
-            isConnected 
+            connectionStatus === 'connected'
               ? 'bg-green-500/20 text-green-400' 
-              : isConnecting 
+              : connectionStatus === 'connecting'
                 ? 'bg-yellow-500/20 text-yellow-400' 
                 : 'bg-red-500/20 text-red-400'
           }`}>
-            {isConnected ? '● Connected' : isConnecting ? '○ Connecting...' : '○ Disconnected'}
+            {connectionStatus === 'connected' ? '● Connected' : connectionStatus === 'connecting' ? '○ Connecting...' : '○ Disconnected'}
           </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {!isConnected && !isConnecting && (
-            <button
-              onClick={connectToBackend}
-              className="text-xs px-2 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-            >
-              Connect
-            </button>
-          )}
         </div>
       </div>
 
