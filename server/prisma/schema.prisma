@@ -1,0 +1,263 @@
+// Prisma Schema for AI Digital Friend Zone
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== USER & AUTH ==============
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String?
+  avatar        String?
+  plan          Plan      @default(FREE)
+  stripeId      String?   @unique
+  
+  // Relations
+  projects      Project[]
+  sessions      Session[]
+  apiKeys       ApiKey[]
+  deployments   Deployment[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  name      String
+  key       String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+}
+
+enum Plan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+// ============== PROJECTS ==============
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  template    String?
+  isPublic    Boolean  @default(false)
+  
+  // Owner
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  files       File[]
+  history     ProjectHistory[]
+  deployments Deployment[]
+  
+  // Settings stored as JSON
+  settings    Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  path      String
+  name      String
+  content   String?  @db.Text
+  type      FileType @default(FILE)
+  language  String?
+  size      Int      @default(0)
+  
+  // S3 storage for large files
+  s3Key     String?
+  
+  // Project relation
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([projectId, path])
+  @@index([projectId])
+}
+
+enum FileType {
+  FILE
+  FOLDER
+}
+
+model ProjectHistory {
+  id        String   @id @default(uuid())
+  action    String
+  snapshot  Json?
+  
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([projectId])
+}
+
+// ============== AI CHAT ==============
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  title     String?
+  projectId String?
+  userId    String
+  
+  messages  ChatMessage[]
+  
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  role      MessageRole
+  content   String      @db.Text
+  
+  // AI metadata
+  model     String?
+  tokens    Int?
+  
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime    @default(now())
+  
+  @@index([sessionId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// ============== DEPLOYMENTS ==============
+
+model Deployment {
+  id           String           @id @default(uuid())
+  provider     DeployProvider
+  status       DeployStatus     @default(PENDING)
+  url          String?
+  
+  // Provider specific data
+  providerData Json?
+  logs         String?          @db.Text
+  
+  projectId    String
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  
+  @@index([projectId])
+  @@index([userId])
+}
+
+enum DeployProvider {
+  VERCEL
+  NETLIFY
+  RAILWAY
+  RENDER
+  FLY_IO
+  HEROKU
+  AWS
+  DIGITALOCEAN
+}
+
+enum DeployStatus {
+  PENDING
+  BUILDING
+  DEPLOYED
+  FAILED
+  CANCELLED
+}
+
+// ============== EXTENSIONS ==============
+
+model Extension {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  version     String
+  icon        String?
+  author      String?
+  
+  // Extension code/config
+  manifest    Json
+  
+  downloads   Int      @default(0)
+  rating      Float    @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserExtension {
+  id          String   @id @default(uuid())
+  userId      String
+  extensionId String
+  enabled     Boolean  @default(true)
+  settings    Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([userId, extensionId])
+}
+
+// ============== USAGE & BILLING ==============
+
+model Usage {
+  id        String   @id @default(uuid())
+  userId    String
+  type      UsageType
+  count     Int      @default(1)
+  metadata  Json?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId, type])
+}
+
+enum UsageType {
+  AI_REQUEST
+  DEPLOYMENT
+  STORAGE_MB
+  TERMINAL_MINUTES
+}
