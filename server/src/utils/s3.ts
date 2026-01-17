@@ -46,7 +46,8 @@ export async function uploadToS3(
     Body: buffer,
     ContentType: mimeType,
     Metadata: metadata,
-    ACL: 'public-read', // Make publicly accessible
+    // Note: ACL removed because bucket has "bucket owner enforced" setting
+    // Public access is controlled via bucket policy instead
   });
 
   await s3Client.send(command);
@@ -101,7 +102,7 @@ export async function getSignedUploadUrl(
     Bucket: BUCKET,
     Key: key,
     ContentType: mimeType,
-    ACL: 'public-read',
+    // Note: ACL removed because bucket has "bucket owner enforced" setting
   });
 
   return getSignedUrl(s3Client, command, { expiresIn });
