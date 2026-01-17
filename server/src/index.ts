@@ -18,6 +18,7 @@ import aiRoutes from './routes/ai';
 import terminalRoutes from './routes/terminal';
 import deployRoutes from './routes/deploy';
 import extensionRoutes from './routes/extensions';
+import mediaRoutes from './routes/media';
 
 // Import services
 import { setupTerminalSocket } from './services/terminal';
@@ -82,6 +83,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/deploy', deployRoutes);
 app.use('/api/extensions', extensionRoutes);
+app.use('/api/media', mediaRoutes);
 
 // ============== SOCKET.IO ==============
 

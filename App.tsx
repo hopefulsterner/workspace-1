@@ -10,6 +10,7 @@ import { DeployPanel } from './components/DeployPanel';
 import { ExtensionsPanel } from './components/ExtensionsPanel';
 import { FileNode, OpenFile } from './types';
 import { voiceOutput, speechSupport } from './services/speech';
+import { mediaService } from './services/media';
 
 type LeftTab = 'files' | 'templates' | 'extensions' | 'search' | 'history';
 type RightTab = 'ai' | 'deploy' | 'settings';
@@ -643,7 +644,7 @@ const App: React.FC = () => {
       // Stop the stream immediately after capture
       track.stop();
       
-      // Draw to canvas and download
+      // Draw to canvas
       const canvas = document.createElement('canvas');
       canvas.width = bitmap.width;
       canvas.height = bitmap.height;
@@ -651,27 +652,49 @@ const App: React.FC = () => {
       if (ctx) {
         ctx.drawImage(bitmap, 0, 0);
         
-        // Convert to blob and download
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `screenshot-${currentProject?.name || 'project'}-${Date.now()}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            // Add to chat as context
-            addMessage({
-              id: crypto.randomUUID(),
-              role: 'user',
-              content: '📸 Screenshot captured and saved!',
-              timestamp: Date.now(),
-            });
-          }
-        }, 'image/png');
+        const filename = `screenshot-${currentProject?.name || 'project'}-${Date.now()}.png`;
+        
+        // Upload to S3
+        const uploadResult = await mediaService.uploadFromCanvas(
+          canvas, 
+          filename, 
+          'SCREENSHOT',
+          currentProject?.id
+        );
+        
+        if (uploadResult.success && uploadResult.media) {
+          // Add to chat with S3 URL
+          addMessage({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: `📸 Screenshot captured and uploaded!\n\n![Screenshot](${uploadResult.media.url})`,
+            timestamp: Date.now(),
+          });
+          
+          // Also download locally
+          mediaService.download(uploadResult.media.url, filename);
+        } else {
+          // Fallback: just download locally
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              
+              addMessage({
+                id: crypto.randomUUID(),
+                role: 'user',
+                content: '📸 Screenshot captured and saved locally!',
+                timestamp: Date.now(),
+              });
+            }
+          }, 'image/png');
+        }
       }
     } catch (error: any) {
       console.error('Screenshot error:', error);
@@ -717,36 +740,60 @@ const App: React.FC = () => {
   }, [cameraActive, cameraStream]);
   
   // Capture photo from camera
-  const capturePhoto = useCallback(() => {
+  const capturePhoto = useCallback(async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `camera-${Date.now()}.png`;
-            a.click();
-            URL.revokeObjectURL(url);
-            
-            // Add to chat
-            addMessage({
-              id: crypto.randomUUID(),
-              role: 'user',
-              content: '📷 Photo captured from camera',
-              timestamp: Date.now(),
-            });
-          }
-        }, 'image/png');
+        
+        const filename = `camera-${Date.now()}.png`;
+        
+        // Upload to S3
+        const uploadResult = await mediaService.uploadFromCanvas(
+          canvas,
+          filename,
+          'CAMERA',
+          currentProject?.id
+        );
+        
+        if (uploadResult.success && uploadResult.media) {
+          // Add to chat with S3 URL
+          addMessage({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: `📷 Photo captured!\n\n![Camera Photo](${uploadResult.media.url})`,
+            timestamp: Date.now(),
+          });
+          
+          // Also download locally
+          mediaService.download(uploadResult.media.url, filename);
+        } else {
+          // Fallback: just download locally
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              a.click();
+              URL.revokeObjectURL(url);
+              
+              addMessage({
+                id: crypto.randomUUID(),
+                role: 'user',
+                content: '📷 Photo captured and saved locally!',
+                timestamp: Date.now(),
+              });
+            }
+          }, 'image/png');
+        }
       }
     }
-  }, [addMessage]);
+  }, [addMessage, currentProject]);
   
   // Connect camera stream to video element when stream or cameraActive changes
   useEffect(() => {

@@ -261,3 +261,50 @@ enum UsageType {
   STORAGE_MB
   TERMINAL_MINUTES
 }
+
+// ============== MEDIA UPLOADS ==============
+
+model Media {
+  id          String      @id @default(uuid())
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int
+  
+  // S3 storage
+  s3Key       String      @unique
+  s3Bucket    String
+  url         String
+  
+  // Type of media
+  type        MediaType   @default(IMAGE)
+  source      MediaSource @default(UPLOAD)
+  
+  // Optional relations
+  userId      String?
+  projectId   String?
+  
+  // Metadata (dimensions, duration, etc)
+  metadata    Json        @default("{}")
+  
+  createdAt   DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([projectId])
+  @@index([type])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
+enum MediaSource {
+  UPLOAD
+  SCREENSHOT
+  CAMERA
+  AI_GENERATED
+}
