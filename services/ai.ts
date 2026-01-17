@@ -40,6 +40,9 @@ const PROVIDER_CONFIGS: Record<AIProvider, { baseUrl: string; models: string[] }
   },
 };
 
+// Backend API URL
+const API_URL = import.meta.env.VITE_API_URL || 'https://maula.dev/api';
+
 // Internal API key - users don't need to configure this
 // In production, this should be handled by a backend proxy
 const INTERNAL_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
@@ -63,6 +66,42 @@ When generating code:
 When the user shares a file, analyze it in context of their question.
 Format code blocks with the appropriate language identifier.`;
 
+// Try to use backend API first, fallback to direct API calls
+async function sendViaBackend(
+  provider: string,
+  model: string,
+  messages: ChatMessage[],
+  temperature: number
+): Promise<AIResponse | null> {
+  try {
+    // API_URL already includes /api, so just add /ai/chat
+    const response = await fetch(`${API_URL}/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        provider,
+        model,
+        temperature,
+      }),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { content: data.response };
+    }
+    return null;
+  } catch (error) {
+    console.log('Backend API not available, using direct API calls');
+    return null;
+  }
+}
+
 export const aiService = {
   // Get available models for a provider
   getModels: (provider: AIProvider): string[] => {
@@ -76,6 +115,14 @@ export const aiService = {
     context?: string
   ): Promise<AIResponse> => {
     const { provider, model, baseUrl, temperature, maxTokens } = config;
+    
+    // Try backend API first (server has API keys configured)
+    const backendResponse = await sendViaBackend(provider, model, messages, temperature);
+    if (backendResponse) {
+      return backendResponse;
+    }
+    
+    // Fallback to direct API calls if backend not available
     // Use internal API key if user hasn't provided one
     const apiKey = config.apiKey || INTERNAL_API_KEY;
 

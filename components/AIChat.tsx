@@ -4,7 +4,11 @@ import { ChatMessage } from '../types';
 import { voiceInput, voiceOutput, speechSupport } from '../services/speech';
 import { aiService } from '../services/ai';
 
-export const AIChat: React.FC = () => {
+interface AIChatProps {
+  voiceEnabled?: boolean;
+}
+
+export const AIChat: React.FC<AIChatProps> = ({ voiceEnabled: externalVoiceEnabled = false }) => {
   const { 
     chatHistory, 
     addMessage, 
@@ -19,7 +23,6 @@ export const AIChat: React.FC = () => {
   
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -67,11 +70,17 @@ export const AIChat: React.FC = () => {
     }, { continuous: true, interimResults: true });
   };
 
-  // Speak response handler
+  // Speak response handler - only speaks if voice is enabled
   const handleSpeak = (text: string) => {
-    if (!speechSupport.synthesis) return;
+    if (!externalVoiceEnabled || !speechSupport.synthesis) return;
     
-    voiceOutput.speak(text, {
+    // Clean text for speech (remove code blocks, etc)
+    const cleanText = text
+      .replace(/```[\s\S]*?```/g, 'Code block omitted.')
+      .replace(/`[^`]+`/g, '')
+      .slice(0, 500); // Limit to first 500 chars
+    
+    voiceOutput.speak(cleanText, {
       rate: 1,
       pitch: 1,
       onEnd: () => {},
@@ -140,7 +149,7 @@ export const AIChat: React.FC = () => {
       addMessage(assistantMessage);
       
       // Auto-speak if enabled
-      if (voiceEnabled && speechSupport.synthesis) {
+      if (externalVoiceEnabled && speechSupport.synthesis) {
         handleSpeak(aiResponse.content);
       }
     } catch (error) {

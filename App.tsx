@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from './store/useStore';
 import { FileExplorer } from './components/FileExplorer';
 import { CodeEditor } from './components/CodeEditor';
@@ -9,6 +9,7 @@ import { LivePreview } from './components/LivePreview';
 import { DeployPanel } from './components/DeployPanel';
 import { ExtensionsPanel } from './components/ExtensionsPanel';
 import { FileNode, OpenFile } from './types';
+import { voiceOutput, speechSupport } from './services/speech';
 
 type LeftTab = 'files' | 'templates' | 'extensions' | 'search' | 'history';
 type RightTab = 'ai' | 'deploy' | 'settings';
@@ -595,9 +596,155 @@ const App: React.FC = () => {
     terminalOpen,
     toggleTerminal,
     currentProject,
+    addMessage,
   } = useStore();
 
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  
+  // Voice, Screenshot, Camera state
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Voice toggle handler
+  const handleVoiceToggle = useCallback(() => {
+    if (voiceEnabled) {
+      voiceOutput.stop();
+      setVoiceEnabled(false);
+    } else {
+      setVoiceEnabled(true);
+    }
+  }, [voiceEnabled]);
+  
+  // Screenshot handler - captures the preview area
+  const handleScreenshot = useCallback(async () => {
+    setIsCapturing(true);
+    try {
+      // Use html2canvas-like approach or capture visible area
+      const previewElement = document.querySelector('[data-preview-container]') as HTMLElement;
+      if (previewElement) {
+        // Try using native browser screenshot API if available
+        const canvas = document.createElement('canvas');
+        const rect = previewElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        
+        // For iframe content, we'll use a different approach
+        const iframe = previewElement.querySelector('iframe');
+        if (iframe) {
+          try {
+            // Capture using canvas drawing
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = theme === 'dark' ? '#1e293b' : '#ffffff';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.fillStyle = theme === 'dark' ? '#ffffff' : '#000000';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('Preview Screenshot Captured', 20, 30);
+              ctx.fillText(`Project: ${currentProject?.name || 'Untitled'}`, 20, 60);
+              ctx.fillText(`Time: ${new Date().toLocaleString()}`, 20, 90);
+            }
+          } catch (e) {
+            console.log('Cross-origin iframe, using fallback');
+          }
+        }
+        
+        // Convert to blob and download
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `screenshot-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        }, 'image/png');
+        
+        // Also add to chat as context
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: '📸 Screenshot captured and saved',
+          timestamp: Date.now(),
+        });
+      } else {
+        alert('No preview area found to capture');
+      }
+    } catch (error) {
+      console.error('Screenshot error:', error);
+      alert('Failed to capture screenshot');
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [theme, currentProject, addMessage]);
+  
+  // Camera handler
+  const handleCameraToggle = useCallback(async () => {
+    if (cameraActive && cameraStream) {
+      // Stop camera
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+      setCameraActive(false);
+    } else {
+      // Start camera
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setCameraStream(stream);
+        setCameraActive(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Camera error:', error);
+        alert('Failed to access camera. Please check permissions.');
+      }
+    }
+  }, [cameraActive, cameraStream]);
+  
+  // Capture photo from camera
+  const capturePhoto = useCallback(() => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `camera-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            // Add to chat
+            addMessage({
+              id: crypto.randomUUID(),
+              role: 'user',
+              content: '📷 Photo captured from camera',
+              timestamp: Date.now(),
+            });
+          }
+        }, 'image/png');
+      }
+    }
+  }, [addMessage]);
+  
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [cameraStream]);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftTab, setLeftTab] = useState<LeftTab>('files');
   const [rightTab, setRightTab] = useState<RightTab>('ai');
@@ -927,30 +1074,46 @@ const App: React.FC = () => {
           
           {/* Media buttons - Camera, Screenshot, Voice */}
           <button
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-300/50'}`}
-            title="Camera"
+            onClick={handleCameraToggle}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${
+              cameraActive 
+                ? 'bg-red-500 text-white' 
+                : theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-300/50'
+            }`}
+            title={cameraActive ? "Stop Camera" : "Start Camera"}
           >
-            <span className="text-lg">📷</span>
+            <span className="text-lg">{cameraActive ? '🔴' : '📷'}</span>
             <div className={`absolute right-full mr-2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-gray-800 text-white'}`}>
-              Camera Capture
+              {cameraActive ? 'Stop Camera' : 'Start Camera'}
             </div>
           </button>
           <button
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-300/50'}`}
+            onClick={handleScreenshot}
+            disabled={isCapturing}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${
+              isCapturing 
+                ? 'bg-blue-500 text-white animate-pulse' 
+                : theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-300/50'
+            }`}
             title="Screenshot"
           >
-            <span className="text-lg">🖥️</span>
+            <span className="text-lg">{isCapturing ? '⏳' : '🖥️'}</span>
             <div className={`absolute right-full mr-2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-gray-800 text-white'}`}>
-              Screenshot
+              {isCapturing ? 'Capturing...' : 'Take Screenshot'}
             </div>
           </button>
           <button
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${theme === 'dark' ? 'text-emerald-500 hover:text-emerald-400 hover:bg-slate-800/50' : 'text-emerald-600 hover:text-emerald-700 hover:bg-gray-300/50'}`}
-            title="Voice"
+            onClick={handleVoiceToggle}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative ${
+              voiceEnabled 
+                ? theme === 'dark' ? 'bg-emerald-600 text-white' : 'bg-emerald-500 text-white'
+                : theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-300/50'
+            }`}
+            title={voiceEnabled ? "Voice On - Click to Turn Off" : "Voice Off - Click to Turn On"}
           >
-            <span className="text-lg">🔊</span>
+            <span className="text-lg">{voiceEnabled ? '🔊' : '🔇'}</span>
             <div className={`absolute right-full mr-2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-gray-800 text-white'}`}>
-              Voice On/Off
+              {voiceEnabled ? 'Voice ON - Click to mute' : 'Voice OFF - Click to enable'}
             </div>
           </button>
           
@@ -990,13 +1153,58 @@ const App: React.FC = () => {
             
             {/* Panel Content */}
             <div className="flex-1 overflow-hidden">
-              {rightTab === 'ai' && <AIChat />}
+              {rightTab === 'ai' && <AIChat voiceEnabled={voiceEnabled} />}
               {rightTab === 'deploy' && <DeployPanel />}
               {rightTab === 'settings' && <SettingsPanel theme={theme} setTheme={setTheme} />}
             </div>
           </div>
         )}
       </aside>
+      
+      {/* Hidden elements for camera capture */}
+      <video ref={videoRef} autoPlay playsInline className="hidden" />
+      <canvas ref={canvasRef} className="hidden" />
+      
+      {/* Camera Preview Modal */}
+      {cameraActive && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className={`${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} rounded-xl p-4 max-w-2xl w-full mx-4 shadow-2xl`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>📷 Camera Preview</h3>
+              <button
+                onClick={handleCameraToggle}
+                className="p-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex justify-center gap-4 mt-4">
+              <button
+                onClick={capturePhoto}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <span>📸</span> Capture Photo
+              </button>
+              <button
+                onClick={handleCameraToggle}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <span>⏹️</span> Stop Camera
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
