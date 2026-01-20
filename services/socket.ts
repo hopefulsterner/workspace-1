@@ -10,11 +10,11 @@ class SocketService {
   
   // Connection URL - use backend API URL
   private getSocketUrl(): string {
-    // In production, connect to the same origin
+    // In production, connect to the API server
     // In development, use localhost:4000
     if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-      // Production: use same origin (https://maula.dev)
-      return `${window.location.protocol}//${window.location.host}`;
+      // Production: use api subdomain
+      return 'https://api.maula.dev';
     }
     // Development
     return 'http://localhost:4000';
@@ -183,9 +183,9 @@ class SocketService {
   // AI OPERATIONS
   // ===========================================
   
-  // Stream AI chat response
+  // Stream AI chat response (with vision support)
   streamAIChat(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: string; images?: string[] }>,
     provider: string = 'openai',
     model?: string,
     callbacks?: {
@@ -222,11 +222,15 @@ class SocketService {
     this.on('ai:chat:done', doneHandler);
     this.on('ai:chat:error', errorHandler);
 
+    // Check if any messages have images - use vision model
+    const hasImages = messages.some(m => m.images && m.images.length > 0);
+    const visionModel = hasImages ? 'gpt-4o' : (model || 'gpt-4o-mini');
+
     // Send request
     this.emit('ai:chat:stream', {
       messages,
       provider,
-      model: model || 'gpt-4o-mini',
+      model: visionModel,
     });
   }
 
@@ -247,6 +251,85 @@ class SocketService {
     });
 
     this.emit('ai:complete', { prefix, suffix, language });
+  }
+
+  // ===========================================
+  // MULTI-AGENT SYSTEM
+  // ===========================================
+
+  // Send message to specific agent or orchestrator
+  sendAgentMessage(
+    message: string,
+    agentType?: string,
+    projectContext?: string,
+    callbacks?: {
+      onStatus?: (status: { status: string; agent: string; message?: string }) => void;
+      onResponse?: (response: string) => void;
+      onError?: (error: string) => void;
+    }
+  ): void {
+    if (!this.socket?.connected) {
+      callbacks?.onError?.('Socket not connected');
+      return;
+    }
+
+    // Set up listeners
+    const statusHandler = (data: { status: string; agent: string; message?: string }) => {
+      callbacks?.onStatus?.(data);
+    };
+
+    const responseHandler = (data: { response: string }) => {
+      this.off('ai:agent:status', statusHandler);
+      this.off('ai:agent:response', responseHandler);
+      this.off('ai:agent:error', errorHandler);
+      callbacks?.onResponse?.(data.response);
+    };
+
+    const errorHandler = (data: { error: string }) => {
+      this.off('ai:agent:status', statusHandler);
+      this.off('ai:agent:response', responseHandler);
+      this.off('ai:agent:error', errorHandler);
+      callbacks?.onError?.(data.error);
+    };
+
+    this.on('ai:agent:status', statusHandler);
+    this.on('ai:agent:response', responseHandler);
+    this.on('ai:agent:error', errorHandler);
+
+    // Send request
+    this.emit('ai:agent:chat', {
+      message,
+      agentType: agentType || 'orchestrator',
+      projectContext,
+    });
+  }
+
+  // Get list of available agents
+  getAgentList(callback: (agents: Array<{ id: string; name: string; icon: string; description: string }>) => void): void {
+    if (!this.socket?.connected) {
+      console.warn('[Socket] Not connected for agent list');
+      return;
+    }
+
+    this.socket.once('ai:agent:list', (data: { agents: Array<{ id: string; name: string; icon: string; description: string }> }) => {
+      callback(data.agents);
+    });
+
+    this.emit('ai:agent:list');
+  }
+
+  // Clear agent history
+  clearAgentHistory(callback?: () => void): void {
+    if (!this.socket?.connected) {
+      console.warn('[Socket] Not connected for clearing agent history');
+      return;
+    }
+
+    if (callback) {
+      this.socket.once('ai:agent:cleared', callback);
+    }
+
+    this.emit('ai:agent:clear');
   }
 }
 

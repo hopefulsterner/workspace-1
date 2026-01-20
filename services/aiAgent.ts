@@ -20,6 +20,7 @@ export interface FileOperation {
 export interface AIAgentMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  images?: string[];  // Base64 data URLs for images
 }
 
 // System prompt for agentic AI assistant

@@ -50,7 +50,7 @@ const AI_PROVIDERS = {
   cerebras: {
     name: 'Cerebras',
     icon: '🔮',
-    models: ['llama3.1-8b', 'llama3.1-70b'],
+    models: ['llama-3.3-70b', 'llama-3.1-8b', 'llama-3.1-70b'],
   },
   huggingface: {
     name: 'Hugging Face',
@@ -342,7 +342,7 @@ const SettingsPanel: React.FC<{ theme: string; setTheme: (t: any) => void }> = (
   const inputBg = theme === 'dark' ? 'bg-slate-700' : 'bg-white border border-gray-300';
   const kbdBg = theme === 'dark' ? 'bg-slate-700' : 'bg-gray-200';
 
-  const currentProvider = AI_PROVIDERS[aiConfig.provider as AIProviderKey] || AI_PROVIDERS.gemini;
+  const currentProvider = AI_PROVIDERS[aiConfig.provider as AIProviderKey] || AI_PROVIDERS.openai;
 
   return (
     <div className="p-4 space-y-6 overflow-auto h-full">
@@ -559,8 +559,8 @@ const SettingsPanel: React.FC<{ theme: string; setTheme: (t: any) => void }> = (
               autoSave: true,
             });
             setAiConfig({
-              provider: 'gemini',
-              model: 'gemini-2.0-flash',
+              provider: 'openai',
+              model: 'gpt-4o-mini',
               temperature: 0.7,
               maxTokens: 4096,
             });

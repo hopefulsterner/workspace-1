@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package project;
+
+// Project management service
+service ProjectService {
+  // Create a new project
+  rpc CreateProject (CreateProjectRequest) returns (ProjectResponse);
+  
+  // Get project by ID
+  rpc GetProject (GetProjectRequest) returns (ProjectResponse);
+  
+  // List all projects for a user
+  rpc ListProjects (ListProjectsRequest) returns (ListProjectsResponse);
+  
+  // Update a project
+  rpc UpdateProject (UpdateProjectRequest) returns (ProjectResponse);
+  
+  // Delete a project
+  rpc DeleteProject (DeleteProjectRequest) returns (DeleteResponse);
+  
+  // Clone a project
+  rpc CloneProject (CloneProjectRequest) returns (ProjectResponse);
+  
+  // Export project as ZIP
+  rpc ExportProject (ExportProjectRequest) returns (ExportProjectResponse);
+}
+
+message CreateProjectRequest {
+  string user_id = 1;
+  string name = 2;
+  string description = 3;
+  string template = 4;
+}
+
+message GetProjectRequest {
+  string project_id = 1;
+  string user_id = 2;
+}
+
+message ListProjectsRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  string sort_by = 4;
+  string sort_order = 5;
+}
+
+message UpdateProjectRequest {
+  string project_id = 1;
+  string user_id = 2;
+  optional string name = 3;
+  optional string description = 4;
+  map<string, string> settings = 5;
+}
+
+message DeleteProjectRequest {
+  string project_id = 1;
+  string user_id = 2;
+}
+
+message CloneProjectRequest {
+  string source_project_id = 1;
+  string user_id = 2;
+  string new_name = 3;
+}
+
+message ExportProjectRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string format = 3; // "zip", "tar"
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string template = 4;
+  string user_id = 5;
+  string created_at = 6;
+  string updated_at = 7;
+  int32 file_count = 8;
+  int32 deployment_count = 9;
+}
+
+message ProjectResponse {
+  bool success = 1;
+  Project project = 2;
+  string error = 3;
+}
+
+message ListProjectsResponse {
+  bool success = 1;
+  repeated Project projects = 2;
+  int32 total = 3;
+  int32 page = 4;
+  int32 limit = 5;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ExportProjectResponse {
+  bool success = 1;
+  bytes data = 2;
+  string filename = 3;
+  string content_type = 4;
+}

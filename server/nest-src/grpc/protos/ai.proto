@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package ai;
+
+// AI Service for code generation and chat
+service AIService {
+  // Generate code from a prompt
+  rpc GenerateCode (CodeGenerationRequest) returns (CodeGenerationResponse);
+  
+  // Stream chat responses
+  rpc StreamChat (ChatRequest) returns (stream ChatChunk);
+  
+  // Get available providers
+  rpc GetProviders (Empty) returns (ProvidersResponse);
+  
+  // Analyze code
+  rpc AnalyzeCode (CodeAnalysisRequest) returns (CodeAnalysisResponse);
+}
+
+message Empty {}
+
+message CodeGenerationRequest {
+  string prompt = 1;
+  string language = 2;
+  string framework = 3;
+  string provider = 4;
+  string model = 5;
+}
+
+message CodeGenerationResponse {
+  bool success = 1;
+  repeated GeneratedFile files = 2;
+  string explanation = 3;
+}
+
+message GeneratedFile {
+  string path = 1;
+  string content = 2;
+  string language = 3;
+}
+
+message ChatRequest {
+  repeated ChatMessage messages = 1;
+  string provider = 2;
+  string model = 3;
+  float temperature = 4;
+  int32 max_tokens = 5;
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ChatChunk {
+  string content = 1;
+  bool done = 2;
+}
+
+message ProvidersResponse {
+  repeated string providers = 1;
+}
+
+message CodeAnalysisRequest {
+  string code = 1;
+  string language = 2;
+  repeated string checks = 3; // "security", "performance", "style"
+}
+
+message CodeAnalysisResponse {
+  repeated CodeIssue issues = 1;
+  int32 score = 2;
+  string summary = 3;
+}
+
+message CodeIssue {
+  string severity = 1; // "error", "warning", "info"
+  string message = 2;
+  int32 line = 3;
+  int32 column = 4;
+  string rule = 5;
+  string suggestion = 6;
+}

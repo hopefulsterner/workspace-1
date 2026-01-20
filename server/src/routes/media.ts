@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { prisma } from '../utils/prisma';
 import { 
   uploadToS3, 
   uploadBase64ToS3, 
@@ -57,7 +56,7 @@ router.post('/upload/base64', async (req, res) => {
       return res.status(503).json({ error: 'Media storage not configured' });
     }
 
-    const { data, filename, mimeType, source = 'UPLOAD', projectId } = req.body;
+    const { data, filename, mimeType, source = 'UPLOAD' } = req.body;
 
     if (!data || !filename || !mimeType) {
       return res.status(400).json({ error: 'Missing required fields: data, filename, mimeType' });
@@ -71,35 +70,18 @@ router.post('/upload/base64', async (req, res) => {
     // Upload to S3
     const s3Result = await uploadBase64ToS3(data, filename, mimeType, folder);
 
-    // Save to database (without user association for public uploads)
-    const media = await prisma.media.create({
-      data: {
-        filename: s3Result.key.split('/').pop() || filename,
-        originalName: filename,
-        mimeType,
-        size: s3Result.size,
-        s3Key: s3Result.key,
-        s3Bucket: s3Result.bucket,
-        url: s3Result.url,
-        type: getMediaType(mimeType),
-        source: source as any,
-        projectId: projectId || null,
-        metadata: {},
-      },
-    });
-
-    console.log('[Media] Uploaded:', media.url);
+    console.log('[Media] Uploaded:', s3Result.url);
 
     res.status(201).json({
       success: true,
       media: {
-        id: media.id,
-        url: media.url,
-        filename: media.filename,
-        mimeType: media.mimeType,
-        size: media.size,
-        type: media.type,
-        source: media.source,
+        id: s3Result.key,
+        url: s3Result.url,
+        filename: s3Result.key.split('/').pop() || filename,
+        mimeType,
+        size: s3Result.size,
+        type: getMediaType(mimeType),
+        source,
       },
     });
   } catch (error: any) {
@@ -137,37 +119,9 @@ router.post('/upload/presign', async (req, res) => {
   }
 });
 
-// List recent public media
+// List recent public media (returns empty - no DB storage)
 router.get('/recent', async (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-    const type = req.query.type as string;
-
-    const where: any = {};
-    if (type) {
-      where.type = type.toUpperCase();
-    }
-
-    const media = await prisma.media.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        url: true,
-        filename: true,
-        mimeType: true,
-        size: true,
-        type: true,
-        source: true,
-        createdAt: true,
-      },
-    });
-
-    res.json({ media });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch media' });
-  }
+  res.json({ media: [] });
 });
 
 // ==========================================
@@ -187,39 +141,21 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    const { projectId, source = 'UPLOAD' } = req.body;
+    const { source = 'UPLOAD' } = req.body;
     const file = req.file;
 
     // Upload to S3
     const key = generateS3Key(file.originalname, 'uploads');
     const s3Result = await uploadToS3(file.buffer, key, file.mimetype);
 
-    // Save to database
-    const media = await prisma.media.create({
-      data: {
-        filename: key.split('/').pop() || file.originalname,
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        s3Key: key,
-        s3Bucket: s3Result.bucket,
-        url: s3Result.url,
-        type: getMediaType(file.mimetype),
-        source: source as any,
-        userId: req.userId,
-        projectId: projectId || null,
-        metadata: {},
-      },
-    });
-
     res.status(201).json({
       success: true,
       media: {
-        id: media.id,
-        url: media.url,
-        filename: media.filename,
-        mimeType: media.mimeType,
-        size: media.size,
+        id: key,
+        url: s3Result.url,
+        filename: key.split('/').pop() || file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
       },
     });
   } catch (error: any) {
@@ -228,48 +164,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Get user's media
+// Get user's media (returns empty - no DB storage)
 router.get('/my', async (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const type = req.query.type as string;
-    const projectId = req.query.projectId as string;
-
-    const where: any = { userId: req.userId };
-    if (type) where.type = type.toUpperCase();
-    if (projectId) where.projectId = projectId;
-
-    const media = await prisma.media.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
-
-    res.json({ media });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch media' });
-  }
+  res.json({ media: [] });
 });
 
 // Delete media
 router.delete('/:id', async (req, res) => {
   try {
-    const media = await prisma.media.findFirst({
-      where: {
-        id: req.params.id,
-        userId: req.userId,
-      },
-    });
-
-    if (!media) {
-      return res.status(404).json({ error: 'Media not found' });
-    }
-
+    const key = req.params.id;
+    
     // Delete from S3
-    await deleteFromS3(media.s3Key);
-
-    // Delete from database
-    await prisma.media.delete({ where: { id: media.id } });
+    await deleteFromS3(key);
 
     res.json({ success: true });
   } catch (error) {

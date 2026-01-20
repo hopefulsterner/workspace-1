@@ -1,5 +1,5 @@
 /* AI Digital Friend Zone - Styles */
-/* Using Tailwind CDN for now */
+@import "tailwindcss";
 
 /* Custom scrollbar styles */
 ::-webkit-scrollbar {

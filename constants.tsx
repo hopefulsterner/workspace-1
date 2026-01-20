@@ -6,8 +6,8 @@ export const APP_VERSION = '1.0.0';
 
 // Default AI Configuration
 export const DEFAULT_AI_CONFIG = {
-  provider: 'gemini' as const,
-  model: 'gemini-2.0-flash',
+  provider: 'openai' as const,
+  model: 'gpt-4o-mini',
   temperature: 0.7,
   maxTokens: 4096,
 };

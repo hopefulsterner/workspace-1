@@ -19,6 +19,7 @@ import terminalRoutes from './routes/terminal';
 import deployRoutes from './routes/deploy';
 import extensionRoutes from './routes/extensions';
 import mediaRoutes from './routes/media';
+import aiImageRoutes from './routes/aiImage';
 
 // Import services
 import { setupTerminalSocket } from './services/terminal';
@@ -41,9 +42,26 @@ const io = new SocketIO(httpServer, {
 // Security
 app.use(helmet());
 
-// CORS
+// CORS - allow multiple origins
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://maula.dev',
+  'https://app.maula.dev',
+  'https://www.maula.dev',
+];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Allow any maula.dev subdomain
+    if (origin.endsWith('.maula.dev')) {
+      return callback(null, true);
+    }
+    callback(null, false);
+  },
   credentials: true,
 }));
 
@@ -80,6 +98,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai/image', aiImageRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/deploy', deployRoutes);
 app.use('/api/extensions', extensionRoutes);

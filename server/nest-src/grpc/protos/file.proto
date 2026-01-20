@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package file;
+
+// File management service
+service FileService {
+  // Create a new file
+  rpc CreateFile (CreateFileRequest) returns (FileResponse);
+  
+  // Get file by ID
+  rpc GetFile (GetFileRequest) returns (FileResponse);
+  
+  // List files in a project
+  rpc ListFiles (ListFilesRequest) returns (ListFilesResponse);
+  
+  // Update file content
+  rpc UpdateFile (UpdateFileRequest) returns (FileResponse);
+  
+  // Delete a file
+  rpc DeleteFile (DeleteFileRequest) returns (DeleteResponse);
+  
+  // Rename/Move a file
+  rpc RenameFile (RenameFileRequest) returns (FileResponse);
+  
+  // Batch create files
+  rpc BatchCreateFiles (BatchCreateFilesRequest) returns (BatchFilesResponse);
+  
+  // Search files by content
+  rpc SearchFiles (SearchFilesRequest) returns (SearchFilesResponse);
+  
+  // Get file history (versions)
+  rpc GetFileHistory (GetFileHistoryRequest) returns (FileHistoryResponse);
+}
+
+message CreateFileRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string path = 3;
+  string name = 4;
+  string content = 5;
+  string type = 6; // "FILE" or "FOLDER"
+}
+
+message GetFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+message ListFilesRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string path_prefix = 3;
+  bool include_content = 4;
+}
+
+message UpdateFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+  string content = 3;
+}
+
+message DeleteFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+}
+
+message RenameFileRequest {
+  string file_id = 1;
+  string user_id = 2;
+  string new_name = 3;
+  string new_path = 4;
+}
+
+message BatchCreateFilesRequest {
+  string project_id = 1;
+  string user_id = 2;
+  repeated FileInput files = 3;
+}
+
+message FileInput {
+  string path = 1;
+  string name = 2;
+  string content = 3;
+  string type = 4;
+}
+
+message SearchFilesRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string query = 3;
+  bool regex = 4;
+  bool case_sensitive = 5;
+}
+
+message GetFileHistoryRequest {
+  string file_id = 1;
+  string user_id = 2;
+  int32 limit = 3;
+}
+
+message File {
+  string id = 1;
+  string project_id = 2;
+  string path = 3;
+  string name = 4;
+  string content = 5;
+  string type = 6;
+  string language = 7;
+  int32 size = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message FileResponse {
+  bool success = 1;
+  File file = 2;
+  string error = 3;
+}
+
+message ListFilesResponse {
+  bool success = 1;
+  repeated File files = 2;
+  int32 total = 3;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message BatchFilesResponse {
+  bool success = 1;
+  repeated File files = 2;
+  int32 created_count = 3;
+  repeated string errors = 4;
+}
+
+message SearchResult {
+  File file = 1;
+  repeated Match matches = 2;
+}
+
+message Match {
+  int32 line = 1;
+  int32 column = 2;
+  string text = 3;
+  string context = 4;
+}
+
+message SearchFilesResponse {
+  bool success = 1;
+  repeated SearchResult results = 2;
+  int32 total_matches = 3;
+}
+
+message FileVersion {
+  string id = 1;
+  string content = 2;
+  string created_at = 3;
+  string created_by = 4;
+  string message = 5;
+}
+
+message FileHistoryResponse {
+  bool success = 1;
+  repeated FileVersion versions = 2;
+}
